@@ -296,6 +296,22 @@ fn kde_deriche<'py>(
             "Number of bins must be greater than 0.",
         ));
     }
+    // 入力の有限性をチェック（仕様 S-3）
+    // NaN は f64::min/max と範囲比較の両方をすり抜けるため、明示的に拒否しないと
+    // 欠損値が黙って捨てられ、Numba参照実装との結果も食い違う。
+    let non_finite = data_slice.iter().filter(|v| !v.is_finite()).count();
+    if non_finite > 0 {
+        return Err(PyValueError::new_err(format!(
+            "Input data must be finite; found {non_finite} non-finite value(s)."
+        )));
+    }
+    // バンド幅の符号をチェック（仕様 S-4）
+    // sigma が負だと exp(-lambda / sigma) の符号が反転し、ガウス近似ではない
+    // 別のフィルターになるため、無意味な結果を正常値として返さない。
+    // sigma == 0 は「平滑化しない」として許可する（仕様 S-5）。
+    if sigma < 0.0 {
+        return Err(PyValueError::new_err("Sigma must be non-negative."));
+    }
 
     // データ範囲（最小値と最大値）を計算
     let xmin = data_slice.iter().cloned().fold(f64::INFINITY, f64::min);
@@ -304,17 +320,17 @@ fn kde_deriche<'py>(
     // データ範囲が極めて小さい場合（全てのデータ点が実質的に同じ場所にある場合）の特殊処理
     // この場合、KDEはデルタ関数のような挙動を示すべき
     if (xmax - xmin).abs() < 1e-9 {
+        // 幅ゼロの範囲では割り算ができないため、1e-9 だけ幅を持たせたグリッドを張る
+        let degenerate_width = xmax - xmin + 1e-9;
+        let dx = degenerate_width / bins as f64;
         let x_coords = (0..bins)
-            .map(|i| xmin + (i as f64 + 0.5) * (xmax - xmin + 1e-9) / bins as f64) // わずかな幅を持たせる
+            .map(|i| xmin + (i as f64 + 0.5) * dx)
             .collect::<Vec<f64>>();
         let mut pdf_vals = vec![0.0; bins];
-        if bins > 0 {
-            // 中央のビンに1.0を割り当て、正規化（非常に狭いガウス関数を近似）
-            // 論文のimpulsesテストケースとは異なる、よりロバストなエッジケース処理
-            if !data_slice.is_empty() {
-                pdf_vals[bins / 2] = 1.0 / (1e-9_f64); // 非常に狭い範囲での正規化
-            }
-        }
+        // 中央のビンに全質量を置いた退化PDFを返す（仕様 S-6）。
+        // 高さはグリッド幅から導出するので sum(pdf) * dx == 1 が成り立つ。
+        // 固定値 1/1e-9 を置いていた頃は積分値が bins 分だけ小さくなっていた。
+        pdf_vals[bins / 2] = 1.0 / dx;
         let x_py = PyArray1::from_vec(py, x_coords);
         let pdf_py = PyArray1::from_vec(py, pdf_vals);
         return Ok((x_py, pdf_py));

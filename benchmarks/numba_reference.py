@@ -156,19 +156,33 @@ def kde_deriche(data, bins, sigma):
         raise ValueError("Need at least 4 samples for KDE.")
     if bins == 0:
         raise ValueError("Number of bins must be greater than 0.")
+    # NaN slips past both np.min/np.max propagation and the range comparison in
+    # different ways in each implementation, so reject it explicitly (spec S-3).
+    non_finite = int((~np.isfinite(data)).sum())
+    if non_finite:
+        raise ValueError(
+            f"Input data must be finite; found {non_finite} non-finite value(s)."
+        )
+    # A negative sigma flips the sign in exp(-lambda / sigma) and yields a filter
+    # that is not a Gaussian approximation (spec S-4). sigma == 0 is allowed and
+    # means "no smoothing" (spec S-5).
+    if sigma < 0.0:
+        raise ValueError("Sigma must be non-negative.")
 
     xmin = float(np.min(data))
     xmax = float(np.max(data))
 
     # Degenerate range: every sample sits at (essentially) the same place.
+    # Give the grid a 1e-9 width so the spacing is well defined, then put all the
+    # mass in the middle bin at a height derived from that spacing, so that
+    # sum(pdf) * dx == 1 (spec S-6).
     if abs(xmax - xmin) < 1e-9:
+        degenerate_dx = (xmax - xmin + 1e-9) / bins
         x_coords = np.array(
-            [xmin + (i + 0.5) * (xmax - xmin + 1e-9) / bins for i in range(bins)],
-            dtype=np.float64,
+            [xmin + (i + 0.5) * degenerate_dx for i in range(bins)], dtype=np.float64
         )
         pdf_vals = np.zeros(bins, dtype=np.float64)
-        if bins > 0 and len(data) > 0:
-            pdf_vals[bins // 2] = 1.0 / 1e-9
+        pdf_vals[bins // 2] = 1.0 / degenerate_dx
         return x_coords, pdf_vals
 
     if xmax < xmin:
