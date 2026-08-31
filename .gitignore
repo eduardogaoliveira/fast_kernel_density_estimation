@@ -2,3 +2,26 @@
 temp
 */Cargo.lock
 **/target
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+
+# Numba JIT cache
+*.nbc
+*.nbi
+
+# Tooling caches
+.ruff_cache/
+.pytest_cache/
+.serena/
+
+# Build artifacts
+dist/
+build/
+*.so
+*.pyd
+*.egg-info/
+
+# Benchmark outputs (regenerate on demand)
+outputs/
