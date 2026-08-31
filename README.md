@@ -1,76 +1,164 @@
 # Fast & Accurate Gaussian Kernel Density Estimation (Rust + Python)
 
-## Overview
+A one-dimensional Gaussian kernel density estimator implemented in Rust and exposed
+to Python through PyO3. It combines **linear binning** with a **K=4 Deriche recursive
+filter** to approximate Gaussian smoothing in time independent of the kernel width,
+following Jeffrey Heer's *"Fast & Accurate Gaussian Kernel Density Estimation"*.
 
-This project provides a **fast Kernel Density Estimation (KDE) library implemented in Rust** and **Python scripts for benchmarking and comparison**. It specifically focuses on an efficient Gaussian KDE method using the Deriche recursive filter, as proposed in the paper "Fast & Accurate Gaussian Kernel Density Estimation" by Jeffrey Heer.
+## Public API
 
-The `kde_comparison.py` script is designed to compare the performance and accuracy of the Rust `fast_kde` implementation against `gaussian_kde` from Python's SciPy library and a naive KDE implementation JIT-compiled with Numba.
+The compiled `fast_kde` module exports two functions:
 
-### About `kde_comparison.py`
+| Function | Returns |
+| :--- | :--- |
+| `kde_deriche(data, bins, sigma)` | `(x_coords, pdf_values)` — bin centres over `[min(data), max(data)]` and the PDF, normalised to integrate to 1 |
+| `kde_mode_deriche(data, bins, sigma)` | `float` — the `x` coordinate where the PDF is maximal |
 
-`kde_comparison.py` is an exported version of the `kde_comparison.ipynb` Jupyter Notebook. It serves as a reference script for demonstration and result verification, and is primarily intended for interactive execution within a Jupyter Notebook environment. This file itself is not strictly necessary for the final distribution and might be removed in the future depending on the project's maturity.
+Both raise `ValueError` for fewer than four samples, `bins == 0`, a degenerate bin
+width, or an inconsistent normalisation.
 
-## Installation & Setup
+## Requirements
 
-This project leverages PyO3 for Rust-Python interoperability and NumPy for numerical operations. We recommend using `uv` (a next-generation Python package installer) for efficient dependency management and installation.
+* A stable Rust toolchain — install with [rustup](https://rustup.rs), then `source $HOME/.cargo/env`
+* [uv](https://docs.astral.sh/uv/getting-started/installation/) for Python environment management
 
-### 1. Install Rust Toolchain
+Python packaging uses the **Maturin** build backend (`[tool.maturin]` in
+`pyproject.toml`), so `uv sync` compiles the Rust extension and installs it as
+`fast_kde` — no separate `maturin develop` step is needed.
 
-If you don't have Rust installed, use `rustup` to get it:
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-After installation, reload your shell configuration to make the Rust environment available:
-
-```bash
-source $HOME/.cargo/env
-```
-
-### 2. Install uv
-
-You can find detailed installation instructions for `uv` in its official documentation. This includes various methods like using a standalone installer, `pipx`, `cargo`, Homebrew, and more.
-
-* **[Official uv Installation Guide](https://astral.sh/uv/install)**
-
-### 3. Install Project Dependencies with uv
-
-Navigate to the root directory of this project and use `uv` to install the dependencies. This command will simultaneously resolve and build both the Python dependencies listed in `pyproject.toml` and the Rust dependencies specified in `fast_kde/Cargo.toml`.
+## Setup
 
 ```bash
-cd fast_kernel_density_estimation # Change to your project's root directory
 uv sync
 ```
 
-This command builds the Rust module and installs it into your Python environment (typically as a shared library). This is the recommended way to get started quickly.
-
-### 4. Alternative: Install Rust Extension with Maturin
-
-If you prefer a more direct control over the Rust extension build process or for development purposes, you can use `maturin` to build and install the `fast_kde` Rust library directly into your Python environment.
-
-First, ensure `maturin` is installed in your Python environment:
+To rebuild the extension after changing Rust sources:
 
 ```bash
-pip install maturin
+uv sync --reinstall-package fast-kernel-density-estimation
 ```
 
-Then, from the root directory of the project, build and install the Rust extension in release mode:
+`uv sync` installs exactly the groups you name, so add back any extras you were
+using in the same command, e.g.
+`uv sync --extra benchmark --reinstall-package fast-kernel-density-estimation`.
+
+Verify the extension is really built (importing `fast_kde` alone is not enough —
+the source directory would resolve as an empty namespace package):
 
 ```bash
-cd fast_kernel_density_estimation
-maturin develop --release
+uv run python -c "import fast_kde; print(fast_kde.kde_deriche, fast_kde.kde_mode_deriche)"
 ```
 
-This command compiles the Rust code with optimizations and installs the `fast_kde` Python module in "editable" mode, meaning changes to the Rust source will be reflected on the next Python import (after recompilation).
+### Optional dependency groups
 
-## Benchmarking & Execution
+| Group | Install | Contents |
+| :--- | :--- | :--- |
+| `benchmark` | `uv sync --extra benchmark` | SciPy, Numba, Matplotlib — needed for the test suite and benchmarks |
+| `notebook` | `uv sync --extra notebook` | JupyterLab, ipykernel — needed for `kde_comparison.ipynb` |
 
-You can perform KDE comparisons and benchmarks by opening and running `kde_comparison.ipynb` in a Jupyter environment.
+Combine them when you need both: `uv sync --extra benchmark --extra notebook`.
+
+## Usage
+
+```python
+import numpy as np
+import fast_kde
+
+data = np.random.default_rng(0).normal(0.0, 1.0, 1_000)
+
+x, pdf = fast_kde.kde_deriche(data, 512, 0.2)
+mode = fast_kde.kde_mode_deriche(data, 512, 0.2)
+
+print(x.shape, pdf.shape)          # (512,) (512,)
+print(np.trapezoid(pdf, x))        # ~1.0
+print(mode)                        # location of the density peak
+```
+
+## Tests
+
+```bash
+uv run --extra benchmark pytest -q
+```
+
+The suite checks that the extension is exported at all, that output shapes,
+finiteness, grid monotonicity and PDF normalisation hold, that malformed input is
+rejected, and that the extension agrees with the Numba reference implementation in
+`benchmarks/numba_reference.py` to `rtol=1e-9, atol=1e-12`.
+
+## Benchmark
+
+```bash
+uv run --extra benchmark python benchmarks/benchmark_kde.py --quick --output-dir outputs/smoke
+```
+
+Compares the Rust extension, the Numba reference and `scipy.stats.gaussian_kde` on
+three fixed-seed datasets, reporting wall-clock time, the PDF integral and the
+estimated mode. Drop `--quick` for the full size (n=50,000, bins=1,024) and add
+`--plot` to also write a timings chart. `--output-dir` is required — nothing is
+written outside it.
+
+## Repository layout
+
+```text
+fast_kde/            Rust crate (PyO3 extension module)
+benchmarks/          verification-only code, not part of the installed package
+  numba_reference.py Numba implementation of the same algorithm
+  benchmark_kde.py   benchmark CLI
+tests/               pytest suite
+kde_comparison.ipynb exploratory notebook (needs the notebook extra)
+```
+
+## Generated artifacts
+
+Benchmark output (`outputs/`), build artifacts (`dist/`, `*.so`), and Python/Numba/
+Ruff/pytest caches are git-ignored and are never committed — regenerate them by
+rerunning the commands above.
+
+## Accuracy
+
+The Deriche approximation is checked against an exact Gaussian convolution of the
+same binned histogram. The maximum error is below **0.011% of the peak** across
+bandwidths from 1.9 to 37.5 bins, and it does not grow with the bandwidth.
+
+`scipy.stats.gaussian_kde` is used as an independent cross-check in the benchmark.
+It evaluates the kernel sum exactly while this library smooths a binned grid, so
+the two do not agree pointwise -- expect a few percent, more at very small
+bandwidths where the estimate tracks sampling noise. The estimated **mode** does
+agree, to within a grid step, wherever the mode is well determined.
+
+Two caveats when reading benchmark output:
+
+- On a uniform distribution the density is flat, so `argmax` is decided by
+  sampling noise rather than by a real peak. The reported modes will differ
+  between methods and between runs; this is a property of the question, not a
+  defect in either implementation.
+- Both methods roll off near the data boundary, since neither extends support
+  past `min(data)` and `max(data)`.
+
+A large mode disagreement on unimodal data is worth investigating -- it is how the
+filter bug described below was found.
+
+### Fixed: saturating filter width
+
+Earlier revisions kept only the real part of the complex coefficient pairs in
+equation (2) of the paper and applied the four poles as a cascade. The filter
+width then saturated near 11 bins regardless of `sigma`: the error against an
+exact Gaussian grew to 43% at large bandwidths and the estimated mode stopped
+responding to `sigma` at all. The filter now expands the complex pairs into a
+4th-order IIR with a causal and an anticausal pass, as the paper describes.
+`tests/test_kde.py` pins both the accuracy and the mode convergence.
+
+## Quality gates
+
+```bash
+uv run ruff format --check benchmarks tests
+uv run ruff check benchmarks tests
+cargo fmt --manifest-path fast_kde/Cargo.toml -- --check
+cargo clippy --manifest-path fast_kde/Cargo.toml --all-targets -- -D warnings
+uv build   # produces a platform wheel containing the compiled extension
+```
 
 ## References
 
-The Deriche filter-based KDE approximation method used in this project is based on the following research:
-
 * **Jeffrey Heer.** "Fast & Accurate Gaussian Kernel Density Estimation." IEEE VIS Short Papers, 2021.
-  * [Paper Link (IDL, University of Washington)](http://idl.cs.washington.edu/papers/fast-kde)
+  * [Paper](http://idl.cs.washington.edu/papers/fast-kde)
