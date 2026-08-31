@@ -114,14 +114,39 @@ Benchmark output (`outputs/`), build artifacts (`dist/`, `*.so`), and Python/Num
 Ruff/pytest caches are git-ignored and are never committed — regenerate them by
 rerunning the commands above.
 
-## Notes on comparison
+## Accuracy
 
-`scipy.stats.gaussian_kde` appears in the benchmark for orientation only, not as a
-correctness oracle. It applies its own bandwidth convention and evaluates on a grid
-padded beyond the data range, so its integral and mode legitimately differ from the
-binned Deriche estimates; the benchmark output has shown mode differences of well
-over one unit on uniform data. Agreement is asserted only between the Rust
-extension and the Numba reference, which implement the same algorithm.
+The Deriche approximation is checked against an exact Gaussian convolution of the
+same binned histogram. The maximum error is below **0.011% of the peak** across
+bandwidths from 1.9 to 37.5 bins, and it does not grow with the bandwidth.
+
+`scipy.stats.gaussian_kde` is used as an independent cross-check in the benchmark.
+It evaluates the kernel sum exactly while this library smooths a binned grid, so
+the two do not agree pointwise -- expect a few percent, more at very small
+bandwidths where the estimate tracks sampling noise. The estimated **mode** does
+agree, to within a grid step, wherever the mode is well determined.
+
+Two caveats when reading benchmark output:
+
+- On a uniform distribution the density is flat, so `argmax` is decided by
+  sampling noise rather than by a real peak. The reported modes will differ
+  between methods and between runs; this is a property of the question, not a
+  defect in either implementation.
+- Both methods roll off near the data boundary, since neither extends support
+  past `min(data)` and `max(data)`.
+
+A large mode disagreement on unimodal data is worth investigating -- it is how the
+filter bug described below was found.
+
+### Fixed: saturating filter width
+
+Earlier revisions kept only the real part of the complex coefficient pairs in
+equation (2) of the paper and applied the four poles as a cascade. The filter
+width then saturated near 11 bins regardless of `sigma`: the error against an
+exact Gaussian grew to 43% at large bandwidths and the estimated mode stopped
+responding to `sigma` at all. The filter now expands the complex pairs into a
+4th-order IIR with a causal and an anticausal pass, as the paper describes.
+`tests/test_kde.py` pins both the accuracy and the mode convergence.
 
 ## Quality gates
 

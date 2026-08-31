@@ -4,9 +4,11 @@ Runs the same datasets through the Rust extension, the Numba reference in
 :mod:`numba_reference`, and ``scipy.stats.gaussian_kde``, reporting wall-clock
 time, the PDF integral and the estimated mode for each.
 
-SciPy is included for orientation only, not as an oracle: it uses its own
-bandwidth convention and evaluates on a padded grid, so its mode and integral
-are not expected to match the binned Deriche estimates.
+SciPy serves as an independent cross-check. It evaluates the kernel sum exactly
+while this library smooths a binned grid, so the two are not expected to agree
+pointwise -- but at a bandwidth where the mode is well determined they do pick
+the same peak. A large mode disagreement is a signal worth investigating: it is
+how the saturating-filter bug in the Deriche approximation was found.
 
 Usage:
     uv run --extra benchmark python benchmarks/benchmark_kde.py --quick \\
@@ -135,8 +137,10 @@ def format_report(rows, size, bins, sigma, repeats) -> str:
         )
     lines += [
         "",
-        "SciPy uses a padded evaluation grid and its own bandwidth convention;",
-        "its integral and mode are reference points, not expected matches.",
+        "SciPy evaluates the kernel sum exactly on a padded grid; this library",
+        "smooths a binned grid. Small differences in the integral are expected,",
+        "but the modes should agree to within a bin or two on unimodal data --",
+        "a large gap means one of the two is wrong.",
     ]
     return "\n".join(lines)
 
