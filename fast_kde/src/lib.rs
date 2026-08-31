@@ -1,6 +1,6 @@
 // fast_kde/src/lib.rs
 
-use numpy::{PyArray1, PyReadonlyArray1};
+use numpy::{PyArray1, PyArrayMethods, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
@@ -243,8 +243,8 @@ fn kde_deriche<'py>(
                 pdf_vals[bins / 2] = 1.0 / (1e-9_f64); // 非常に狭い範囲での正規化
             }
         }
-        let x_py = PyArray1::from_vec_bound(py, x_coords);
-        let pdf_py = PyArray1::from_vec_bound(py, pdf_vals);
+        let x_py = PyArray1::from_vec(py, x_coords);
+        let pdf_py = PyArray1::from_vec(py, pdf_vals);
         return Ok((x_py, pdf_py));
     }
 
@@ -266,8 +266,8 @@ fn kde_deriche<'py>(
             .map(|i| xmin + (i as f64 + 0.5) * bin_width_calc)
             .collect();
         let pdf_values = vec![0.0; bins]; // PDF値も全て0
-        let x_py = PyArray1::from_vec_bound(py, x_coords);
-        let pdf_py = PyArray1::from_vec_bound(py, pdf_values);
+        let x_py = PyArray1::from_vec(py, x_coords);
+        let pdf_py = PyArray1::from_vec(py, pdf_values);
         return Ok((x_py, pdf_py));
     }
 
@@ -311,8 +311,8 @@ fn kde_deriche<'py>(
     let x_coords: Vec<f64> = (0..bins).map(|i| xmin + (i as f64 + 0.5) * dx).collect();
 
     // 結果をPythonのNumPy配列に変換して返す
-    let x_py_bound = PyArray1::from_vec_bound(py, x_coords);
-    let pdf_py_bound = PyArray1::from_vec_bound(py, hist_counts);
+    let x_py_bound = PyArray1::from_vec(py, x_coords);
+    let pdf_py_bound = PyArray1::from_vec(py, hist_counts);
 
     Ok((x_py_bound, pdf_py_bound))
 }
@@ -348,8 +348,8 @@ fn kde_mode_deriche<'py>(
     let (x_pyarray_bound, pdf_pyarray_bound) = kde_deriche(py, data, bins, sigma)?;
 
     // 結果のNumPy配列をRustのスライスとして読み取り
-    let x_ro_array: PyReadonlyArray1<f64> = x_pyarray_bound.as_gil_ref().readonly();
-    let pdf_ro_array: PyReadonlyArray1<f64> = pdf_pyarray_bound.as_gil_ref().readonly();
+    let x_ro_array: PyReadonlyArray1<'_, f64> = x_pyarray_bound.readonly();
+    let pdf_ro_array: PyReadonlyArray1<'_, f64> = pdf_pyarray_bound.readonly();
 
     let x_slice = x_ro_array.as_slice()?;
     let pdf_slice = pdf_ro_array.as_slice()?;
