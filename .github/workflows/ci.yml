@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Endpoints of the supported range (pyproject requires-python >= 3.10.6).
+        python-version: ["3.10", "3.13"]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install the Rust toolchain
+        # The Maturin build backend compiles fast_kde/src/lib.rs during uv sync.
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Verify the lockfile is up to date
+        run: uv lock --check
+
+      - name: Build the extension and install dependencies
+        run: uv sync --extra benchmark
+
+      - name: Packaging smoke test
+        run: uv run python -c "import fast_kde; assert callable(fast_kde.kde_deriche); assert callable(fast_kde.kde_mode_deriche)"
+
+      - name: Run the test suite
+        run: uv run --extra benchmark pytest -q
+
+      - name: Check Python formatting
+        run: uv run ruff format --check benchmarks tests
+
+      - name: Lint Python
+        run: uv run ruff check benchmarks tests
+
+      - name: Build the wheel
+        run: uv build
+
+  rust:
+    name: rust quality gates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v7
+
+      - name: Install the Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path fast_kde/Cargo.toml -- --check
+
+      - name: Run clippy
+        run: cargo clippy --manifest-path fast_kde/Cargo.toml --all-targets -- -D warnings
