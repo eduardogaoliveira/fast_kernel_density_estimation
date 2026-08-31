@@ -1,19 +1,38 @@
 [build-system]
-requires = ["setuptools >= 71.0.0"]
-build-backend = "setuptools.build_meta"
+requires = ["maturin>=1.8,<2"]
+build-backend = "maturin"
 
 [project]
 name = "fast-kernel-density-estimation"
 version = "0.1.0"
-description = "Add your description here"
+description = "Fast one-dimensional Gaussian KDE using a Deriche recursive filter"
 readme = "README.md"
 requires-python = ">=3.10.6"
 dependencies = [
-    "ipykernel>=6.29.5",
-    "jupyterlab>=4.4.2",
-    "matplotlib>=3.10.3",
-    "maturin>=1.8.6",
-    "numba>=0.61.2",
     "numpy>=2.2.6",
+]
+
+[project.optional-dependencies]
+benchmark = [
+    "matplotlib>=3.10.3",
+    "numba>=0.61.2",
     "scipy>=1.15.3",
 ]
+notebook = [
+    "ipykernel>=6.29.5",
+    "jupyterlab>=4.4.2",
+]
+
+[dependency-groups]
+dev = [
+    "maturin>=1.8,<2",
+    "pytest>=8,<10",
+    "ruff>=0.12,<1",
+]
+
+[tool.maturin]
+manifest-path = "fast_kde/Cargo.toml"
+module-name = "fast_kde"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
