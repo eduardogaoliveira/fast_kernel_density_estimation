@@ -5,6 +5,9 @@ use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
+/// `kde_deriche` の戻り値: (ビン中心のX座標, 対応するPDF値) のNumPy配列ペア。
+type KdeGrid<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>);
+
 /// # 1Dデータの線形ビニング
 ///
 /// 入力データを指定された範囲とビン数で線形ビニングします。
@@ -44,7 +47,7 @@ fn linear_binning(data: &[f64], xmin: f64, xmax: f64, bins: usize) -> Vec<f64> {
 
     let num_threads = rayon::current_num_threads();
     // データをスレッド数に基づいてチャンクに分割し、各チャンクで並列処理
-    let chunk_size = (data.len() + num_threads - 1) / num_threads;
+    let chunk_size = data.len().div_ceil(num_threads);
 
     // 各スレッドのローカルヒストグラムを計算し、最後に集計する
     let thread_hists: Vec<Vec<f64>> = data
@@ -144,13 +147,13 @@ fn deriche_recursive_filter_approx(signal: &mut [f64], sigma: f64) {
         // sigmaに対する指数減衰項 (-lambda / sigma).exp()
         let filter_pole = ALPHA_COEFFS[k_pass] * (-LAMBDA_COEFFS[k_pass] / sigma).exp();
         let mut prev_output = 0.0; // 前の出力値を保持（再帰的な計算のため）
-        for i in 0..m {
+        for value in signal.iter_mut() {
             // y[i] = x[i] + a * y[i-1] の形式の再帰フィルター
             // ここでは、入力は常に元の信号の現在の状態（前のパスからの出力）
-            // このため、`signal[i]` を読み込み、計算結果を `prev_output` に格納し、
-            // その結果で `signal[i]` を更新している
-            prev_output = signal[i] + filter_pole * prev_output;
-            signal[i] = prev_output;
+            // このため、現在値を読み込み、計算結果を `prev_output` に格納し、
+            // その結果で書き戻している
+            prev_output = *value + filter_pole * prev_output;
+            *value = prev_output;
         }
     }
 
@@ -211,7 +214,7 @@ fn kde_deriche<'py>(
     data: PyReadonlyArray1<'py, f64>,
     bins: usize,
     sigma: f64,
-) -> PyResult<(Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>)> {
+) -> PyResult<KdeGrid<'py>> {
     let data_slice = data.as_slice()?; // PythonのndarrayからRustのスライスへ変換
 
     // データ点数の最小要件をチェック
