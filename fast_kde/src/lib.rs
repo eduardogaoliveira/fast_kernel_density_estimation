@@ -1,15 +1,17 @@
 // fast_kde/src/lib.rs
 
-use numpy::{
-    PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
-};
+use numpy::{PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
 
 /// `kde_deriche` の戻り値: (ビン中心のX座標, 対応するPDF値) のNumPy配列ペア。
 type KdeGrid<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>);
-type KdeGrid2D<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>, Bound<'py, PyArray2<f64>>);
+type KdeGrid2D<'py> = (
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray2<f64>>,
+);
 type DecomposedMatrix = ([[f64; 2]; 2], [[f64; 2]; 2], [[f64; 2]; 2]);
 
 /// # 1Dデータの線形ビニング
@@ -515,7 +517,7 @@ fn linear_binning_2d(
 ) -> Vec<Vec<f64>> {
     let xbins = bins;
     let ybins = bins;
-    
+
     if xbins == 0 || ybins == 0 {
         return vec![];
     }
@@ -559,8 +561,7 @@ fn linear_binning_2d(
                     let c = fraction_down * fraction_left;
                     let d = fraction_down * fraction_right;
                     let total_area = a + b + c + d;
-                    if kh < xbins && kv < ybins
-                        && kh + 1 < xbins && kv + 1 < ybins {
+                    if kh < xbins && kv < ybins && kh + 1 < xbins && kv + 1 < ybins {
                             local_hist[kh * ybins + kv] += c / total_area;
                             local_hist[(kh + 1) * ybins + kv] += d / total_area;
                             local_hist[kh * ybins + (kv + 1)] += a / total_area;
@@ -856,11 +857,7 @@ fn mean(x: &[f64]) -> f64 {
 fn covariance_2d(x: &[f64], y: &[f64], population: bool) -> [[f64; 2]; 2] {
     assert!(x.len() == y.len());
     let n = x.len() as f64;
-    let divisor = if population {
-        n
-    } else {
-        n - 1.
-    };
+    let divisor = if population { n } else { n - 1. };
     let mut cov = [[0.; 2]; 2];
     let x_mean = mean(x);
     let y_mean = mean(y);
