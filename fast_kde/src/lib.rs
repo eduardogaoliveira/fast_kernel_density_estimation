@@ -1,8 +1,7 @@
 // fast_kde/src/lib.rs
 
 use numpy::{
-    IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
-    PyReadonlyArrayDyn, PyUntypedArrayMethods,
+    PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -10,6 +9,8 @@ use rayon::prelude::*;
 
 /// `kde_deriche` の戻り値: (ビン中心のX座標, 対応するPDF値) のNumPy配列ペア。
 type KdeGrid<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>);
+type KdeGrid2D<'py> = (Bound<'py, PyArray1<f64>>, Bound<'py, PyArray1<f64>>, Bound<'py, PyArray2<f64>>);
+type DecomposedMatrix = ([[f64; 2]; 2], [[f64; 2]; 2], [[f64; 2]; 2]);
 
 /// # 1Dデータの線形ビニング
 ///
@@ -510,9 +511,11 @@ fn linear_binning_2d(
     xmax: f64,
     ymin: f64,
     ymax: f64,
-    xbins: usize,
-    ybins: usize,
+    bins: usize,
 ) -> Vec<Vec<f64>> {
+    let xbins = bins;
+    let ybins = bins;
+    
     if xbins == 0 || ybins == 0 {
         return vec![];
     }
@@ -535,7 +538,7 @@ fn linear_binning_2d(
     );
 
     let num_threads = rayon::current_num_threads();
-    let chunk_size = (x.len() + num_threads - 1) / num_threads;
+    let chunk_size = x.len().div_ceil(num_threads);
     let thread_hists: Vec<Vec<f64>> = x
         .par_chunks(chunk_size)
         .zip(y.par_chunks(chunk_size))
@@ -556,13 +559,12 @@ fn linear_binning_2d(
                     let c = fraction_down * fraction_left;
                     let d = fraction_down * fraction_right;
                     let total_area = a + b + c + d;
-                    if kh < xbins && kv < ybins {
-                        if kh + 1 < xbins && kv + 1 < ybins {
+                    if kh < xbins && kv < ybins
+                        && kh + 1 < xbins && kv + 1 < ybins {
                             local_hist[kh * ybins + kv] += c / total_area;
                             local_hist[(kh + 1) * ybins + kv] += d / total_area;
                             local_hist[kh * ybins + (kv + 1)] += a / total_area;
                             local_hist[(kh + 1) * ybins + (kv + 1)] += b / total_area;
-                        }
                     }
                 } else if (x_val - xmax).abs() < 1e-9
                     && xbins > 0
@@ -624,11 +626,7 @@ fn kde_deriche_2d<'py>(
     py: Python<'py>,
     data: PyReadonlyArray2<'py, f64>,
     bins: usize, // Square binning-only. Temporary
-) -> PyResult<(
-    Bound<'py, PyArray1<f64>>,
-    Bound<'py, PyArray1<f64>>,
-    Bound<'py, PyArray2<f64>>,
-)> {
+) -> PyResult<KdeGrid2D<'py>> {
     let view = data.as_array();
     let shape = view.shape();
     let (x_slice, y_slice);
@@ -672,7 +670,7 @@ fn kde_deriche_2d<'py>(
             "Number of bins must be greater than 0 in all dimensions.",
         ));
     }
-    let h = bandwidth_matrix(&x, &y);
+    let h = bandwidth_matrix(x, y);
     let (_p, d, _pt) = decompose_matrix(&h);
     let sigma_x = d[0][0].sqrt();
     let sigma_y = d[1][1].sqrt();
@@ -695,7 +693,7 @@ fn kde_deriche_2d<'py>(
         )));
     }
 
-    let mut hist_counts = linear_binning_2d(x, y, xmin, xmax, ymin, ymax, bins, bins);
+    let mut hist_counts = linear_binning_2d(x, y, xmin, xmax, ymin, ymax, bins);
     // if hist_counts.iter().flatten().all(|&h_val| h_val.abs() < 1e-9) {
     //     todo!()
     // }
@@ -766,8 +764,7 @@ fn kde_deriche_2d<'py>(
 /// alpha definition is described by Yang (2012) in doi:10.1007/978-3-642-33718-5_29
 ///
 /// ## Arguments
-/// - signal: Any dimention of input data (numpy.ndarray containing a one-dimensional f64 array).
-/// Modified in place.
+/// - signal: Any dimention of input data (numpy.ndarray containing a one-dimensional f64 array). Modified in place.
 /// - sigma: Axis bandwidth multiplied by the bin scale factors
 fn deriche_recursive_filter_2nd_order_approx(signal: &mut [f64], sigma: f64) {
     if sigma.abs() < 1e-9 || signal.is_empty() {
@@ -860,13 +857,13 @@ fn covariance_2d(x: &[f64], y: &[f64], population: bool) -> [[f64; 2]; 2] {
     assert!(x.len() == y.len());
     let n = x.len() as f64;
     let divisor = if population {
-        n as f64
+        n
     } else {
-        (n - 1.) as f64
+        n - 1.
     };
     let mut cov = [[0.; 2]; 2];
-    let x_mean = mean(&x);
-    let y_mean = mean(&y);
+    let x_mean = mean(x);
+    let y_mean = mean(y);
     for (x, y) in x.iter().zip(y.iter()) {
         let x_diff = x - x_mean;
         let y_diff = y - y_mean;
@@ -907,7 +904,7 @@ fn bandwidth_matrix(x: &[f64], y: &[f64]) -> [[f64; 2]; 2] {
 /// - First element: P
 /// - Second element: D
 /// - Third element: P^T
-fn decompose_matrix(matrix: &[[f64; 2]; 2]) -> ([[f64; 2]; 2], [[f64; 2]; 2], [[f64; 2]; 2]) {
+fn decompose_matrix(matrix: &[[f64; 2]; 2]) -> DecomposedMatrix {
     let a = matrix[0][0];
     let b0 = matrix[0][1];
     let b1 = matrix[1][0];
@@ -921,53 +918,6 @@ fn decompose_matrix(matrix: &[[f64; 2]; 2]) -> ([[f64; 2]; 2], [[f64; 2]; 2], [[
     let d = [[lambda_2, 0.], [0., lambda_1]];
     let pt = [[-b0 / (a - lambda_2), 1.], [-b0 / (a - lambda_1), 1.]];
     (p, d, pt)
-}
-
-/// # Perform matricial multiplication between two 2x2 arrays
-///
-/// ## Arguments
-/// - a: 2x2 array.
-/// - b: 2x2 array.
-///
-/// ## Returns
-/// - [[f64; 2]; 2]
-fn matrix_multiplication(a: &[[f64; 2]; 2], b: &[[f64; 2]; 2]) -> [[f64; 2]; 2] {
-    return [
-        [
-            a[0][0] * b[0][0] + a[0][1] * b[1][0],
-            a[0][0] * b[0][1] + a[0][1] * b[1][1],
-        ],
-        [
-            a[1][0] * b[0][0] + a[1][1] * b[1][0],
-            a[1][0] * b[0][1] + a[1][1] * b[1][1],
-        ],
-    ];
-}
-
-/// # Takes the square root of every array element
-///
-/// ## Arguments
-/// - matrix: 2x2 array.
-///
-/// ## Returns
-/// - [[f64; 2]; 2]
-fn matrix_sqrt(matrix: &[[f64; 2]; 2]) -> [[f64; 2]; 2] {
-    let sqrt_matrix = [
-        [matrix[0][0].sqrt(), matrix[0][1].sqrt()],
-        [matrix[1][0].sqrt(), matrix[1][1].sqrt()],
-    ];
-    sqrt_matrix
-}
-
-/// # Calculates the determinant of the input matrix
-///
-/// ## Arguments
-/// - a: 2x2 array.
-///
-/// ## Returns
-/// - f64
-fn det(a: &[[f64; 2]; 2]) -> f64 {
-    a[0][0] * a[1][1] - a[0][1] * a[1][0]
 }
 
 /// # Pythonモジュール `fast_kde` の定義
