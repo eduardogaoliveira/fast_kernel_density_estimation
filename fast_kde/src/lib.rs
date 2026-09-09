@@ -717,6 +717,7 @@ fn kde_deriche_2d<'py>(
     });
 
     // 2. Filter along X direction (for each fixed Y index j)
+    #[allow(clippy::needless_range_loop)]
     for j in 0..ybins {
         let mut column: Vec<f64> = (0..xbins).map(|i| hist_counts[i][j]).collect();
 
