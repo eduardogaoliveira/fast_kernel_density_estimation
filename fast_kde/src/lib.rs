@@ -542,8 +542,7 @@ fn linear_binning_2d(
         .map(|(x_chunk, y_chunk)| {
             let mut local_hist = vec![0.0_f64; xbins * ybins];
             for (&x_val, &y_val) in x_chunk.iter().zip(y_chunk.iter()) {
-                if x_val >= xmin && x_val < xmax && 
-                   y_val >= ymin && y_val < ymax {
+                if x_val >= xmin && x_val < xmax && y_val >= ymin && y_val < ymax {
                     let posh = (x_val - xmin) / xbin_width;
                     let posv = (y_val - ymin) / ybin_width;
                     let kh = posh.floor() as usize;
@@ -565,10 +564,10 @@ fn linear_binning_2d(
                             local_hist[(kh + 1) * ybins + (kv + 1)] += b / total_area;
                         }
                     }
-                } else if (x_val - xmax).abs() < 1e-9 
-                    && xbins > 0 
-                    && (y_val - ymax).abs() < 1e-9 
-                    && ybins > 0 
+                } else if (x_val - xmax).abs() < 1e-9
+                    && xbins > 0
+                    && (y_val - ymax).abs() < 1e-9
+                    && ybins > 0
                 {
                     local_hist[(xbins - 1) * ybins + (ybins - 1)] += 1.0;
                 }
@@ -643,10 +642,10 @@ fn kde_deriche_2d<'py>(
         // Shape is (2, N)
         x_slice = xbinding
             .as_slice()
-            .ok_or_else(|| {PyValueError::new_err("x row is not contiguous")})?;
+            .ok_or_else(|| PyValueError::new_err("x row is not contiguous"))?;
         y_slice = ybinding
             .as_slice()
-            .ok_or_else(|| {PyValueError::new_err("y row is not contiguous")})?;
+            .ok_or_else(|| PyValueError::new_err("y row is not contiguous"))?;
     } else if shape[1] == 2 {
         // Shape is (N, 2)
         x_vec = view.column(0).to_vec();
@@ -799,7 +798,7 @@ fn deriche_recursive_filter_2nd_order_approx(signal: &mut [f64], sigma: f64) {
         y_plus[1] = a1_plus * signal[1] + a2_plus * signal[0] + b1 * y_plus[0];
     }
     for i in 2..n {
-        y_plus[i] = 
+        y_plus[i] =
             a1_plus * signal[i] + a2_plus * signal[i - 1] + b1 * y_plus[i - 1] + b2 * y_plus[i - 2];
     }
 
@@ -810,9 +809,9 @@ fn deriche_recursive_filter_2nd_order_approx(signal: &mut [f64], sigma: f64) {
     }
     if n > 2 {
         for i in (0..n - 2).rev() {
-            y_minus[i] = a3_minus * signal[i + 1] 
-                + a4_minus * signal[i + 2] 
-                + b1 * y_minus[i + 1] 
+            y_minus[i] = a3_minus * signal[i + 1]
+                + a4_minus * signal[i + 2]
+                + b1 * y_minus[i + 1]
                 + b2 * y_minus[i + 2];
         }
     }
