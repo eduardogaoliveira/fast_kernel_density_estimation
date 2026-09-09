@@ -943,7 +943,7 @@ fn matrix_multiplication(a: &[[f64; 2]; 2], b: &[[f64; 2]; 2]) -> [[f64; 2]; 2] 
             a[1][0] * b[0][1] + a[1][1] * b[1][1],
         ],
     ];
-
+}
 
 /// # Takes the square root of every array element
 ///
