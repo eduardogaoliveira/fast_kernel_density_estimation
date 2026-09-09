@@ -1,14 +1,8 @@
 // fast_kde/src/lib.rs
 
 use numpy::{
-    IntoPyArray,
-    PyArray1, 
-    PyArray2, 
-    PyArrayMethods, 
-    PyReadonlyArray1, 
-    PyReadonlyArray2, 
-    PyReadonlyArrayDyn,
-    PyUntypedArrayMethods,
+    IntoPyArray, PyArray1, PyArray2, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2,
+    PyReadonlyArrayDyn, PyUntypedArrayMethods,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -489,7 +483,7 @@ fn kde_mode_deriche<'py>(
 
 /// Performs 2D linear binning of the input data over the specified range and
 /// number of bins.
-/// 
+///
 /// This method is based on the approach described in Section 5,
 /// "Data Binning," of the doi:10.1007/978-3-319-71688-6_5."
 /// The weight of each data point is distributed proportionally between its
@@ -566,13 +560,16 @@ fn linear_binning_2d(
                     if kh < xbins && kv < ybins {
                         if kh + 1 < xbins && kv + 1 < ybins {
                             local_hist[kh * ybins + kv] += c / total_area;
-                            local_hist[(kh+1) * ybins + kv] += d / total_area;
-                            local_hist[kh * ybins + (kv+1)] += a / total_area;
-                            local_hist[(kh+1) * ybins + (kv+1)] += b / total_area;
+                            local_hist[(kh + 1) * ybins + kv] += d / total_area;
+                            local_hist[kh * ybins + (kv + 1)] += a / total_area;
+                            local_hist[(kh + 1) * ybins + (kv + 1)] += b / total_area;
                         }
                     }
-                } else if (x_val - xmax).abs() < 1e-9 && xbins > 0 &&
-                          (y_val - ymax).abs() < 1e-9 && ybins > 0 {
+                } else if (x_val - xmax).abs() < 1e-9 
+                    && xbins > 0 
+                    && (y_val - ymax).abs() < 1e-9 
+                    && ybins > 0 
+                {
                     local_hist[(xbins - 1) * ybins + (ybins - 1)] += 1.0;
                 }
             }
@@ -591,7 +588,7 @@ fn linear_binning_2d(
     global_hist
 }
 
-/// # 2D Kernel Density Estimation (KDE) Using 2D Linear Binning and the 
+/// # 2D Kernel Density Estimation (KDE) Using 2D Linear Binning and the
 /// second order approximation Deriche Filter
 ///
 /// For a two-dimensional dataset, a histogram grid is first constructed using
@@ -629,11 +626,9 @@ fn kde_deriche_2d<'py>(
     data: PyReadonlyArray2<'py, f64>,
     bins: usize, // Square binning-only. Temporary
 ) -> PyResult<(
-    Bound<'py, PyArray1<f64>>, 
-    Bound<'py, PyArray1<f64>>, 
+    Bound<'py, PyArray1<f64>>,
+    Bound<'py, PyArray1<f64>>,
     Bound<'py, PyArray2<f64>>,
-    Bound<'py, PyArray2<f64>>,
-    f64
 )> {
     let view = data.as_array();
     let shape = view.shape();
@@ -646,12 +641,12 @@ fn kde_deriche_2d<'py>(
     let ybinding = view.row(1);
     if shape[0] == 2 {
         // Shape is (2, N)
-        x_slice = xbinding.as_slice().ok_or_else(|| {
-            PyValueError::new_err("x row is not contiguous")
-        })?;
-        y_slice = ybinding.as_slice().ok_or_else(|| {
-            PyValueError::new_err("y row is not contiguous")
-        })?;
+        x_slice = xbinding
+            .as_slice()
+            .ok_or_else(|| {PyValueError::new_err("x row is not contiguous")})?;
+        y_slice = ybinding
+            .as_slice()
+            .ok_or_else(|| {PyValueError::new_err("y row is not contiguous")})?;
     } else if shape[1] == 2 {
         // Shape is (N, 2)
         x_vec = view.column(0).to_vec();
@@ -670,7 +665,7 @@ fn kde_deriche_2d<'py>(
 
     if x.len() < 4 || y.len() < 4 {
         return Err(PyValueError::new_err(
-            "Need at least 4 samples per dimension for KDE 2D."
+            "Need at least 4 samples per dimension for KDE 2D.",
         ));
     }
     if xbins == 0 || ybins == 0 {
@@ -683,10 +678,10 @@ fn kde_deriche_2d<'py>(
     let sigma_x = d[0][0].sqrt();
     let sigma_y = d[1][1].sqrt();
 
-    let xmin = x.iter().cloned().fold(f64::INFINITY, f64::min) -0.5*sigma_x;
-    let xmax = x.iter().cloned().fold(f64::NEG_INFINITY, f64::max) +0.5*sigma_x;
-    let ymin = y.iter().cloned().fold(f64::INFINITY, f64::min) -0.5*sigma_y;
-    let ymax = y.iter().cloned().fold(f64::NEG_INFINITY, f64::max) +0.5*sigma_y;
+    let xmin = x.iter().cloned().fold(f64::INFINITY, f64::min) - 0.5 * sigma_x;
+    let xmax = x.iter().cloned().fold(f64::NEG_INFINITY, f64::max) + 0.5 * sigma_x;
+    let ymin = y.iter().cloned().fold(f64::INFINITY, f64::min) - 0.5 * sigma_y;
+    let ymax = y.iter().cloned().fold(f64::NEG_INFINITY, f64::max) + 0.5 * sigma_y;
 
     if xmax < xmin {
         return Err(PyValueError::new_err(format!(
@@ -701,14 +696,13 @@ fn kde_deriche_2d<'py>(
         )));
     }
 
-    let mut hist_counts = linear_binning_2d(
-        x, y, xmin, xmax, ymin, ymax, bins, bins);
+    let mut hist_counts = linear_binning_2d(x, y, xmin, xmax, ymin, ymax, bins, bins);
     // if hist_counts.iter().flatten().all(|&h_val| h_val.abs() < 1e-9) {
     //     todo!()
     // }
     let bin_range_x = xmax - xmin;
     let bin_range_y = ymax - ymin;
-    
+
     // Compute bin scale factors (bins per data unit)
     let sfx = xbins as f64 / bin_range_x;
     let sfy = ybins as f64 / bin_range_y;
@@ -742,7 +736,7 @@ fn kde_deriche_2d<'py>(
 
     if dx <= 0.0 || dy <= 0.0 {
         return Err(PyValueError::new_err(
-            "Bin widths (dx, dy) must not be too small or zero."
+            "Bin widths (dx, dy) must not be too small or zero.",
         ));
     }
 
@@ -764,33 +758,19 @@ fn kde_deriche_2d<'py>(
     let x_py_bound = PyArray1::from_vec(py, x_coords);
     let t_py_bound = PyArray1::from_vec(py, y_coords);
     let pdf_py_bound = PyArray2::from_vec2(py, &hist_counts)?;
-    let cov: Vec<Vec<f64>> = covariance_2d(&x, &y, false)
-        .iter()
-        .map(|row| row.to_vec())
-        .collect();
-    let py_cov = PyArray2::from_vec2(py, &cov)?;
-    let h_vec: Vec<Vec<f64>> = h
-        .iter()
-        .map(|row| row.to_vec())
-        .collect();
-    let py_h = PyArray2::from_vec2(py, &h_vec)?;
-
-    Ok((x_py_bound, t_py_bound, pdf_py_bound, py_h, scotts_factor(&x)))
+    Ok((x_py_bound, t_py_bound, pdf_py_bound))
 }
 
 /// # Uses a second-order filter for 1-dimentional recursion
-/// 
+///
 /// Described by Deriche (1990) in doi:10.1109/34.41386
 /// alpha definition is described by Yang (2012) in doi:10.1007/978-3-642-33718-5_29
-/// 
+///
 /// ## Arguments
 /// - signal: Any dimention of input data (numpy.ndarray containing a one-dimensional f64 array).
 /// Modified in place.
 /// - sigma: Axis bandwidth multiplied by the bin scale factors
-fn deriche_recursive_filter_2nd_order_approx(
-    signal: &mut [f64], 
-    sigma: f64) 
-{
+fn deriche_recursive_filter_2nd_order_approx(signal: &mut [f64], sigma: f64) {
     if sigma.abs() < 1e-9 || signal.is_empty() {
         return;
     }
@@ -819,8 +799,8 @@ fn deriche_recursive_filter_2nd_order_approx(
         y_plus[1] = a1_plus * signal[1] + a2_plus * signal[0] + b1 * y_plus[0];
     }
     for i in 2..n {
-        y_plus[i] = a1_plus * signal[i] + a2_plus * signal[i - 1] 
-                  + b1 * y_plus[i - 1] + b2 * y_plus[i - 2];
+        y_plus[i] = 
+            a1_plus * signal[i] + a2_plus * signal[i - 1] + b1 * y_plus[i - 1] + b2 * y_plus[i - 2];
     }
 
     // 2. Anti-Causal Pass
@@ -830,8 +810,10 @@ fn deriche_recursive_filter_2nd_order_approx(
     }
     if n > 2 {
         for i in (0..n - 2).rev() {
-            y_minus[i] = a3_minus * signal[i + 1] + a4_minus * signal[i + 2] 
-                       + b1 * y_minus[i + 1] + b2 * y_minus[i + 2];
+            y_minus[i] = a3_minus * signal[i + 1] 
+                + a4_minus * signal[i + 2] 
+                + b1 * y_minus[i + 1] 
+                + b2 * y_minus[i + 2];
         }
     }
 
@@ -848,9 +830,7 @@ fn deriche_recursive_filter_2nd_order_approx(
 ///
 /// ## Returns
 /// - f64
-fn scotts_factor(
-    x: &[f64],
-) -> f64 {
+fn scotts_factor(x: &[f64]) -> f64 {
     let d: f64 = 2.;
     let n: f64 = x.len() as f64;
     n.powf(-1. / (4. + d))
@@ -863,9 +843,7 @@ fn scotts_factor(
 ///
 /// ## Returns
 /// - f64
-fn mean(
-    x: &[f64]
-) -> f64 {
+fn mean(x: &[f64]) -> f64 {
     let n = x.len() as f64;
     let sum: f64 = x.iter().sum();
     sum / n
@@ -879,12 +857,8 @@ fn mean(
 ///
 /// ## Returns
 /// - [[f64; 2]; 2]
-fn covariance_2d(
-    x: &[f64],
-    y: &[f64],
-    population: bool
-) -> [[f64; 2]; 2] {
-    assert! (x.len() == y.len());
+fn covariance_2d(x: &[f64], y: &[f64], population: bool) -> [[f64; 2]; 2] {
+    assert!(x.len() == y.len());
     let n = x.len() as f64;
     let divisor = if population {
         n as f64
@@ -916,20 +890,15 @@ fn covariance_2d(
 ///
 /// ## Returns
 /// - [[f64; 2]; 2]
-fn bandwidth_matrix(
-    x: &[f64],
-    y: &[f64],
-) -> [[f64; 2]; 2] {
+fn bandwidth_matrix(x: &[f64], y: &[f64]) -> [[f64; 2]; 2] {
     let f = scotts_factor(x);
     let mut h = covariance_2d(x, y, false);
-    h.iter_mut()
-        .flatten()
-        .for_each(|val| *val *= f * f);
+    h.iter_mut().flatten().for_each(|val| *val *= f * f);
     h
 }
 
 /// # Decompose a square array A into it's eigenvectors and eigenvalues, following
-/// A = PDP^T where P^T is P transposed 
+/// A = PDP^T where P^T is P transposed
 ///
 /// ## Arguments
 /// - matrix: 2x2 array.
@@ -939,21 +908,19 @@ fn bandwidth_matrix(
 /// - First element: P
 /// - Second element: D
 /// - Third element: P^T
-fn decompose_matrix(
-    matrix: &[[f64; 2]; 2] 
-) -> ([[f64; 2]; 2], [[f64; 2]; 2], [[f64; 2]; 2]) {
+fn decompose_matrix(matrix: &[[f64; 2]; 2]) -> ([[f64; 2]; 2], [[f64; 2]; 2], [[f64; 2]; 2]) {
     let a = matrix[0][0];
     let b0 = matrix[0][1];
     let b1 = matrix[1][0];
     let c = matrix[1][1];
     // det(A-lI) = a*c -(a+c)l + l^2 = 0
     let apc = a + c;
-    let delta = (apc*apc - 4.*(a*c-b0*b1)).sqrt();
+    let delta = (apc * apc - 4. * (a * c - b0 * b1)).sqrt();
     let lambda_1 = 0.5 * (apc + delta);
     let lambda_2 = 0.5 * (apc - delta);
-    let p = [[-b0/(a-lambda_2), -b0/(a-lambda_1)], [1., 1.]];
+    let p = [[-b0 / (a - lambda_2), -b0 / (a - lambda_1)], [1., 1.]];
     let d = [[lambda_2, 0.], [0., lambda_1]];
-    let pt = [[-b0/(a-lambda_2), 1.], [-b0/(a-lambda_1), 1.]];
+    let pt = [[-b0 / (a - lambda_2), 1.], [-b0 / (a - lambda_1), 1.]];
     (p, d, pt)
 }
 
@@ -965,15 +932,18 @@ fn decompose_matrix(
 ///
 /// ## Returns
 /// - [[f64; 2]; 2]
-fn matrix_multiplication(
-    a: &[[f64; 2]; 2],
-    b: &[[f64; 2]; 2] 
-) -> [[f64; 2]; 2] {
+fn matrix_multiplication(a: &[[f64; 2]; 2], b: &[[f64; 2]; 2]) -> [[f64; 2]; 2] {
     return [
-        [a[0][0]*b[0][0] + a[0][1]*b[1][0], a[0][0]*b[0][1] + a[0][1]*b[1][1]],
-        [a[1][0]*b[0][0] + a[1][1]*b[1][0], a[1][0]*b[0][1] + a[1][1]*b[1][1]]
-    ]
-}
+        [
+            a[0][0] * b[0][0] + a[0][1] * b[1][0],
+            a[0][0] * b[0][1] + a[0][1] * b[1][1],
+        ],
+        [
+            a[1][0] * b[0][0] + a[1][1] * b[1][0],
+            a[1][0] * b[0][1] + a[1][1] * b[1][1],
+        ],
+    ];
+
 
 /// # Takes the square root of every array element
 ///
@@ -982,12 +952,10 @@ fn matrix_multiplication(
 ///
 /// ## Returns
 /// - [[f64; 2]; 2]
-fn matrix_sqrt(
-    matrix: &[[f64; 2]; 2]
-) -> [[f64; 2]; 2] {
+fn matrix_sqrt(matrix: &[[f64; 2]; 2]) -> [[f64; 2]; 2] {
     let sqrt_matrix = [
         [matrix[0][0].sqrt(), matrix[0][1].sqrt()],
-        [matrix[1][0].sqrt(), matrix[1][1].sqrt()]
+        [matrix[1][0].sqrt(), matrix[1][1].sqrt()],
     ];
     sqrt_matrix
 }
@@ -999,9 +967,7 @@ fn matrix_sqrt(
 ///
 /// ## Returns
 /// - f64
-fn det(
-    a: &[[f64; 2]; 2]
-) -> f64 {
+fn det(a: &[[f64; 2]; 2]) -> f64 {
     a[0][0] * a[1][1] - a[0][1] * a[1][0]
 }
 
