@@ -1,6 +1,15 @@
 // fast_kde/src/lib.rs
 
-use numpy::{PyArray1, PyArrayMethods, PyReadonlyArray1};
+use numpy::{
+    IntoPyArray,
+    PyArray1, 
+    PyArray2, 
+    PyArrayMethods, 
+    PyReadonlyArray1, 
+    PyReadonlyArray2, 
+    PyReadonlyArrayDyn,
+    PyUntypedArrayMethods,
+};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use rayon::prelude::*;
