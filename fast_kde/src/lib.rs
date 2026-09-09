@@ -562,10 +562,10 @@ fn linear_binning_2d(
                     let d = fraction_down * fraction_right;
                     let total_area = a + b + c + d;
                     if kh < xbins && kv < ybins && kh + 1 < xbins && kv + 1 < ybins {
-                            local_hist[kh * ybins + kv] += c / total_area;
-                            local_hist[(kh + 1) * ybins + kv] += d / total_area;
-                            local_hist[kh * ybins + (kv + 1)] += a / total_area;
-                            local_hist[(kh + 1) * ybins + (kv + 1)] += b / total_area;
+                        local_hist[kh * ybins + kv] += c / total_area;
+                        local_hist[(kh + 1) * ybins + kv] += d / total_area;
+                        local_hist[kh * ybins + (kv + 1)] += a / total_area;
+                        local_hist[(kh + 1) * ybins + (kv + 1)] += b / total_area;
                     }
                 } else if (x_val - xmax).abs() < 1e-9
                     && xbins > 0
